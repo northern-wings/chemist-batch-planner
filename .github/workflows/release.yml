@@ -1,0 +1,52 @@
+name: Build Windows app
+
+# Runs when you publish a release / push a tag like v1.0, v1.1, v2.0 ...
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Put the tag's version number into the app (v1.2 becomes 1.2.0)
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));let v=process.argv[1].replace(/^v/,'').split('-')[0];while(v.split('.').length<3)v+='.0';j.version=v;fs.writeFileSync(p,JSON.stringify(j,null,2));console.log('version',v)" "$GITHUB_REF_NAME"
+
+      - name: Build installer and publish the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Chemist's Batch Planner ${{ github.ref_name }}"
+          releaseBody: "Windows installer (setup .exe) and a portable .exe that needs no install. Download one, not both."
+          releaseDraft: false
+          prerelease: false
+
+      - name: Attach the portable .exe too
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp "src-tauri/target/release/chemist-batch-planner.exe" "Chemist-Batch-Planner-portable.exe"
+          gh release upload "$GITHUB_REF_NAME" "Chemist-Batch-Planner-portable.exe" --clobber

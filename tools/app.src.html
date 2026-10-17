@@ -1,0 +1,921 @@
+<title>Chemist's Batch Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Mono:wght@400;600&family=VT323&display=swap">
+<style>
+/* Layout: the chem room. Station wall (page) → grey floor plates (cards) edged in chem-orange tile, finished goods edged in medbay blue,
+   machine-screen insets for readouts. Order list | procedure | dispenser screen; Guidebook tab mirrors the in-game guide. One look, by choice. */
+:root {
+  color-scheme: light;
+  --wall: #23272c;  --wall-2: #2d3238;  --seam: #17191c;  --wall-ink: #dfe3e6;  --wall-dim: #949ea6;
+  --plate: #c5cacd; --plate-2: #d5d9db; --plate-line: #b6bcc0; --ink: #191d21; --ink-2: #48515a;
+  --chem: #e57a2c;  --chem-2: #f2a15c;  --chem-ink: #2b1503;
+  --med: #3a8bd0;   --med-2: #9ccbef;   --med-ink: #0b2440;
+  --screen: #0f1d17; --screen-2: #16281f; --scr: #84f0b4; --scr-dim: #4f8a6c; --scr-amb: #ffc966; --scr-red: #ff7a6a; --scr-cold: #7fd8ff;
+  --haz: #f0c02c;   --crit: #c83b30; --ok: #23864b;
+  --f-sign: "Pixelify Sans", "Noto Sans", system-ui, sans-serif;
+  --f-body: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "Noto Sans Mono", ui-monospace, Consolas, monospace;
+  --f-screen: "VT323", "Noto Sans Mono", ui-monospace, monospace;
+}
+html, body { background: var(--wall); color: var(--wall-ink); }
+body { font-family: var(--f-body); font-size: 14px; line-height: 1.45;
+  background-image: linear-gradient(var(--seam) 2px, transparent 2px), linear-gradient(90deg, var(--seam) 2px, transparent 2px);
+  background-size: 96px 96px; background-color: var(--wall); }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--haz); outline-offset: 2px; }
+img.px { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 40px; max-width: 1500px; margin: 0 auto; }
+
+/* ---------- masthead: the door sign ---------- */
+.mast { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; margin-bottom: 14px; }
+.sign { display: flex; align-items: center; gap: 10px; background: linear-gradient(#f4f7f9, #cfdbe4); color: #2a5578; border: 3px solid #8fa4b4; border-radius: 6px; padding: 6px 14px 6px 8px; box-shadow: 0 3px 0 var(--seam); }
+.sign img { width: 40px; height: 40px; }
+.sign b { font-family: var(--f-sign); font-weight: 700; font-size: 22px; letter-spacing: .06em; line-height: 1; }
+.mast h1 { font-family: var(--f-sign); font-weight: 700; font-size: 28px; margin: 0; line-height: 1.05; letter-spacing: .01em; text-wrap: balance; }
+.mast h1 span { color: var(--chem-2); }
+.mast .sub { color: var(--wall-dim); font-size: 13px; margin-top: 3px; max-width: 70ch; }
+.mast .grow { flex: 1 1 320px; min-width: 0; }
+.tabs { display: flex; gap: 6px; }
+.tab { font-family: var(--f-sign); font-size: 16px; background: var(--wall-2); border: 2px solid var(--seam); color: var(--wall-dim); padding: 6px 14px; border-radius: 5px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--chem); color: var(--chem-ink); border-color: #b85a17; }
+.stamp { font-family: var(--f-mono); font-size: 11px; color: var(--wall-dim); line-height: 1.6; text-align: right; }
+
+/* ---------- start-here strip ---------- */
+.start { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; background: var(--med-2); color: var(--med-ink); border: 3px solid var(--med); border-radius: 6px; padding: 9px 14px; margin-bottom: 14px; }
+.start b { font-family: var(--f-sign); font-size: 16px; font-weight: 700; }
+.start p { margin: 0; flex: 1 1 380px; min-width: 0; }
+.start button { background: var(--med); color: #fff; border: 0; border-radius: 4px; padding: 6px 12px; font-weight: 600; cursor: pointer; }
+.start .x { background: none; color: var(--med-ink); padding: 4px 8px; }
+
+/* ---------- grid ---------- */
+.grid { display: grid; grid-template-columns: minmax(280px, 330px) minmax(0, 1fr) minmax(260px, 300px); gap: 16px; align-items: start; }
+@media (max-width: 1180px) { .grid { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .col-proc { grid-column: 1 / -1; order: 3; } }
+@media (max-width: 740px) { .grid { grid-template-columns: minmax(0,1fr); } }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* ---------- floor-plate panels ---------- */
+.plate { background-color: var(--plate); color: var(--ink); border: 4px solid var(--chem); border-radius: 4px; box-shadow: 0 0 0 2px var(--seam), 0 6px 0 rgba(0,0,0,.25);
+  background-image: linear-gradient(var(--plate-line) 1px, transparent 1px), linear-gradient(90deg, var(--plate-line) 1px, transparent 1px); background-size: 32px 32px; }
+.plate.med { border-color: var(--med); }
+.plate.wallp { border-color: var(--wall-2); background: var(--wall-2); color: var(--wall-ink); background-image: none; }
+.plate > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: var(--chem); color: var(--chem-ink); }
+.plate.med > header { background: var(--med); color: #fff; }
+.plate.wallp > header { background: var(--seam); color: var(--wall-ink); }
+.plate > header .t { font-family: var(--f-sign); font-weight: 700; font-size: 15px; letter-spacing: .04em; display: flex; align-items: center; gap: 8px; }
+.plate > header img { width: 28px; height: 28px; margin: -6px 0; }
+.plate .body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.label { font-family: var(--f-sign); font-size: 13px; letter-spacing: .05em; color: var(--ink-2); }
+.linkbtn { background: none; border: 0; padding: 0; cursor: pointer; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+/* inputs on plates */
+.field { width: 100%; background: #f1f3f4; border: 2px solid var(--ink-2); border-radius: 3px; padding: 7px 9px; color: var(--ink); }
+.search { position: relative; }
+.results { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); background: #f1f3f4; color: var(--ink); border: 2px solid var(--ink); border-radius: 3px; max-height: 320px; overflow-y: auto; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
+.results button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 6px 9px; background: none; border: 0; text-align: left; cursor: pointer; }
+.results button:hover, .results button.on { background: var(--chem-2); }
+.results .g { margin-left: auto; font-size: 11px; color: var(--ink-2); }
+.dot { width: 11px; height: 11px; flex: none; border: 2px solid rgba(0,0,0,.55); border-radius: 2px; }
+
+.trow { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto auto; align-items: center; gap: 6px; background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; padding: 5px 6px 5px 8px; }
+.trow .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.amt { display: flex; align-items: center; background: var(--screen); border-radius: 3px; padding: 0 6px 0 2px; }
+.amt input { width: 50px; background: none; border: 0; padding: 2px; text-align: right; font-family: var(--f-screen); font-size: 21px; color: var(--scr); line-height: 1.1; }
+.amt span { font-family: var(--f-screen); color: var(--scr-dim); font-size: 18px; }
+.fill { background: var(--plate); border: 2px solid var(--ink-2); border-radius: 3px; font-size: 12px; padding: 3px 2px; max-width: 74px; color: var(--ink); }
+.xbtn { background: none; border: 0; color: var(--ink-2); cursor: pointer; width: 26px; height: 26px; border-radius: 3px; font-size: 15px; }
+.xbtn:hover { color: #fff; background: var(--crit); }
+.empty { color: var(--ink-2); font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--plate-2); border: 2px solid var(--ink-2); border-radius: 3px; padding: 3px 9px; font-size: 12.5px; cursor: pointer; color: var(--ink); }
+.chip:hover { background: var(--chem-2); }
+.irow { display: grid; grid-template-columns: 32px minmax(0,1fr) auto auto; gap: 8px; align-items: center; background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; padding: 4px 6px; }
+.irow img { width: 32px; height: 32px; }
+.irow small { display: block; color: var(--ink-2); font-size: 11.5px; }
+
+/* settings */
+.seg { display: inline-flex; border: 2px solid var(--ink-2); border-radius: 3px; overflow: hidden; }
+.seg button { background: var(--plate-2); border: 0; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
+.seg button + button { border-left: 2px solid var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--chem); color: var(--chem-ink); font-weight: 700; }
+.setrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.setrow .k small { display: block; color: var(--ink-2); font-size: 11.5px; }
+.tog { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.tog input { accent-color: var(--chem); width: 16px; height: 16px; flex: none; }
+
+/* pills */
+.pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 3px; border: 2px solid currentColor; white-space: nowrap; line-height: 16px; background: rgba(255,255,255,.35); }
+.pill.disp { color: #1f5f95; }
+.pill.from { color: #a14d0e; cursor: pointer; }
+.pill.from:hover { background: var(--chem-2); }
+.pill.flash { color: #a3330c; }
+.pill.bring { color: #6d5500; }
+.pill.cat { color: #106f7f; }
+.pill.sop { color: var(--crit); }
+.pill.ok { color: var(--ok); }
+.pill.dim { color: var(--ink-2); }
+
+/* ---------- procedure ---------- */
+.proc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.proc-head h2 { font-family: var(--f-sign); font-size: 22px; margin: 0; }
+.proc-head .meta { color: var(--wall-dim); font-size: 13px; }
+.batches { display: flex; flex-direction: column; gap: 16px; }
+.batch { scroll-margin-top: 16px; }
+.batch.hl { box-shadow: 0 0 0 2px var(--seam), 0 0 0 6px var(--haz); }
+.plate > header.bhead { display: grid; grid-template-columns: auto auto minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 6px 12px 6px 8px; }
+.bnum { font-family: var(--f-sign); font-weight: 700; font-size: 18px; min-width: 34px; height: 34px; display: grid; place-items: center; background: var(--chem-ink); color: var(--chem-2); border-radius: 3px; font-variant-numeric: tabular-nums; }
+.plate.med .bnum { background: var(--med-ink); color: var(--med-2); }
+.bhead .cont-img { width: 40px; height: 40px; }
+.btitle { min-width: 0; }
+.btitle .p { font-family: var(--f-sign); font-weight: 700; font-size: 19px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; line-height: 1.15; }
+.btitle .p button { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.btitle .s { font-size: 12.5px; opacity: .85; }
+.cont { text-align: right; font-size: 12px; line-height: 1.3; }
+.cont b { display: block; font-size: 13.5px; }
+.bbody { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(220px, 1fr); }
+@media (max-width: 860px) { .bbody { grid-template-columns: minmax(0,1fr); } }
+.steps { list-style: none; margin: 0; padding: 10px 12px 12px; counter-reset: st; display: flex; flex-direction: column; gap: 4px; }
+.steps li.st { counter-increment: st; display: grid; grid-template-columns: 22px 62px minmax(0,1fr); align-items: center; gap: 8px; background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; padding: 4px 8px 4px 4px; }
+.steps li.st::before { content: counter(st); font-family: var(--f-sign); font-size: 13px; color: var(--ink-2); text-align: center; }
+.steps .q { font-family: var(--f-screen); font-size: 22px; line-height: 1; text-align: right; background: var(--screen); color: var(--scr); border-radius: 3px; padding: 3px 6px 1px; }
+.steps li.trig { border-color: #a3330c; }
+.steps li.trig .q { color: var(--scr-amb); }
+.steps .what { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.steps .clicks { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-2); }
+.steps li.grp { border: 2px dashed var(--chem); border-radius: 4px; padding: 4px; display: flex; flex-direction: column; gap: 4px; background: rgba(242,161,92,.18); }
+.steps li.grp > ol { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.steps li.grp > .gl { font-size: 12px; font-weight: 600; color: #8a3f0a; padding: 0 4px 2px; }
+.rname { cursor: pointer; background: none; border: 0; padding: 0; text-align: left; font-weight: 600; }
+.rname:hover { text-decoration: underline; }
+.bside { padding: 10px 12px 12px 0; display: flex; flex-direction: column; gap: 10px; }
+@media (max-width: 860px) { .bside { padding: 0 12px 12px; } }
+
+/* machine screen */
+.screen { background: var(--screen); color: var(--scr); border-radius: 4px; border: 3px solid #3b4249; box-shadow: inset 0 0 18px rgba(0,0,0,.6); padding: 8px 10px; font-family: var(--f-screen); font-size: 19px; line-height: 1.15; position: relative; overflow: hidden; }
+.screen::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px); pointer-events: none; }
+.screen .row { display: flex; justify-content: space-between; gap: 10px; }
+.screen .k { color: var(--scr-dim); }
+.screen .amb { color: var(--scr-amb); } .screen .red { color: var(--scr-red); } .screen .cold { color: var(--scr-cold); }
+.screen .big { font-size: 26px; }
+.screen button { font: inherit; background: none; border: 0; color: var(--scr-amb); cursor: pointer; padding: 0; text-decoration: underline; }
+.thermo { margin: 6px 0 2px; }
+.thermo .bar { position: relative; height: 8px; background: linear-gradient(90deg, var(--scr-cold), #24453a 35%, #24453a 55%, var(--scr-red)); }
+.thermo .mark { position: absolute; top: -4px; width: 3px; height: 16px; background: #fff; }
+.thermo .need { position: absolute; top: -4px; height: 16px; border-left: 3px dashed var(--scr-amb); }
+.thermo .scale { position: relative; height: 14px; font-size: 14px; color: var(--scr-dim); margin-top: 3px; }
+.thermo .scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.thermo .scale span:first-child { transform: none; } .thermo .scale span:last-child { transform: translateX(-100%); }
+
+.note { border-radius: 3px; padding: 7px 9px; font-size: 12.5px; background: var(--plate-2); border: 2px solid var(--plate-line); }
+.note.haz { border: 0; padding-left: 18px; position: relative; background: #f6e9c0; color: #2b2100; }
+.note.haz::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 9px; background: repeating-linear-gradient(-45deg, var(--haz) 0 6px, #1b1f23 6px 12px); border-radius: 3px 0 0 3px; }
+.note.crit { background: #f6d5d1; color: #3b0d08; }
+.note.crit::before { background: repeating-linear-gradient(-45deg, var(--crit) 0 6px, #1b1f23 6px 12px); }
+.note.medn { background: var(--med-2); border-color: var(--med); color: var(--med-ink); }
+.note img.ic { display: inline; float: right; width: 32px; height: 32px; margin: -2px -2px 0 6px; }
+.bfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 7px 12px; border-top: 2px solid var(--plate-line); font-size: 12.5px; background: var(--plate-2); }
+.bfoot select { background: #f1f3f4; border: 2px solid var(--ink-2); border-radius: 3px; padding: 2px 4px; max-width: 100%; font-size: 12.5px; }
+
+/* microwave cards */
+.mw .mwbody { padding: 10px 12px 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.mw .ing { display: flex; align-items: center; gap: 8px; background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; padding: 3px 8px 3px 4px; }
+.mw .ing img { width: 32px; height: 32px; }
+
+/* dispenser screen */
+.pull { display: flex; flex-direction: column; gap: 4px; }
+.pull .r { display: grid; grid-template-columns: 12px minmax(0,1fr) auto; gap: 8px; align-items: center; }
+.pull .r .bar { grid-column: 2 / 4; height: 4px; background: #24453a; margin-top: -3px; }
+.pull .r .bar i { display: block; height: 100%; background: var(--scr); }
+.pull .r button { font: inherit; background: none; border: 0; padding: 0; color: var(--scr); cursor: pointer; text-align: left; text-decoration: none; }
+.pull .r button:hover { color: #fff; }
+.pull .tot { border-top: 1px dashed var(--scr-dim); padding-top: 4px; margin-top: 2px; display: flex; justify-content: space-between; color: var(--scr-dim); }
+.src { display: flex; flex-direction: column; gap: 6px; }
+.src .r { display: grid; grid-template-columns: 32px minmax(0,1fr) auto; gap: 8px; align-items: center; background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; padding: 4px 8px 4px 4px; }
+.src .r img, .src .r .ph { width: 32px; height: 32px; }
+.src .r small { display: block; color: var(--ink-2); font-size: 11.5px; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+.hazlist { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---------- guidebook ---------- */
+.gb { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .gb { grid-template-columns: minmax(0,1fr); } }
+.gbnav { display: flex; flex-direction: column; gap: 3px; padding: 8px; }
+.gbnav button { text-align: left; background: none; border: 0; border-radius: 3px; padding: 6px 9px; cursor: pointer; color: var(--wall-ink); font-size: 13.5px; }
+.gbnav button[aria-current="true"] { background: var(--chem); color: var(--chem-ink); font-weight: 700; }
+.gbnav button:hover:not([aria-current="true"]) { background: var(--seam); }
+.gbnav .sec { font-family: var(--f-sign); color: var(--wall-dim); font-size: 12.5px; padding: 8px 9px 2px; }
+.gbpage { padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 10px; }
+.gbpage > * { max-width: 78ch; }
+.gbpage h1, .gbpage h2, .gbpage h3 { font-family: var(--f-sign); margin: 6px 0 0; line-height: 1.15; text-wrap: balance; }
+.gbpage h1 { font-size: 26px; color: #8a3f0a; } .gbpage h2 { font-size: 20px; } .gbpage h3 { font-size: 17px; }
+.gbpage p { margin: 0; }
+.gbpage .li { display: flex; gap: 8px; padding-left: 6px; }
+.gbpage .li::before { content: "›"; color: var(--chem); font-weight: 700; }
+.gbpage .li.n::before { content: attr(data-n); color: var(--ink-2); }
+.gbc-red { color: var(--crit); font-weight: 600; } .gbc-cyan { color: #0f6f86; font-weight: 600; } .gbc-tint { color: #1f5f95; font-weight: 600; }
+.gblink { color: #1f5f95; cursor: pointer; text-decoration: underline; font-weight: 600; }
+.ebox { display: flex; flex-wrap: wrap; gap: 8px; max-width: none !important; }
+.ent { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 92px; text-align: center; font-size: 11.5px; color: var(--ink-2); background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; padding: 6px 4px; }
+.ent img { width: 48px; height: 48px; }
+.rcard { background: var(--plate-2); border: 2px solid var(--plate-line); border-left: 8px solid var(--rc, #888); border-radius: 3px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.rcard .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rcard .top b { font-family: var(--f-sign); font-size: 17px; }
+.rcard .top .chip:first-of-type { margin-left: auto; }
+.rcard .d { color: var(--ink-2); font-size: 13px; }
+.rcard .rx { font-size: 12.5px; }
+.ggrid { display: flex; flex-wrap: wrap; gap: 5px; max-width: none !important; }
+.ggrid button { display: inline-flex; align-items: center; gap: 6px; background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; padding: 2px 8px; cursor: pointer; font-size: 12.5px; }
+.ggrid button:hover { background: var(--chem-2); }
+.gbsrc { font-size: 11.5px; color: var(--ink-2); font-family: var(--f-mono); }
+.eff div { font-size: 13px; }
+.heal { color: var(--ok); font-weight: 600; } .harm { color: var(--crit); font-weight: 600; }
+.cond { font-size: 11px; color: #7a5a00; font-family: var(--f-mono); }
+
+/* ---------- drawer ---------- */
+.drawer { position: fixed; z-index: 40; top: 0; right: 0; bottom: 0; width: min(460px, 100%); overflow-y: auto; border-radius: 0; border-right: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-right: env(safe-area-inset-right, 0px); box-shadow: -14px 0 40px rgba(0,0,0,.55); }
+.drawer .in { padding: 14px 16px 30px; display: flex; flex-direction: column; gap: 12px; }
+.drawer h3 { font-family: var(--f-sign); font-size: 24px; margin: 0; display: flex; align-items: center; gap: 10px; padding-right: 30px; }
+.drawer h4 { margin: 0 0 6px; }
+.drawer p { margin: 0; }
+.scrim { position: fixed; inset: 0; z-index: 39; background: rgba(5,7,9,.6); }
+.closer { position: absolute; top: calc(8px + env(safe-area-inset-top, 0px)); right: calc(8px + env(safe-area-inset-right, 0px)); }
+.rcp { background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; padding: 7px 9px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
+.rcp .ing { display: flex; flex-wrap: wrap; gap: 3px 10px; }
+.foot { margin-top: 26px; color: var(--wall-dim); font-size: 12px; max-width: 90ch; display: flex; flex-direction: column; gap: 8px; }
+.foot summary { cursor: pointer; }
+.foot ul { margin: 6px 0 0; padding-left: 18px; max-height: 240px; overflow-y: auto; }
+@media (prefers-reduced-motion: no-preference) { .batch { transition: box-shadow .25s; } }
+
+/* Mixes tab: one jug, several finished medicines */
+.mixgrid { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .mixgrid { grid-template-columns: minmax(0,1fr); } }
+.mxadd { display: flex; gap: 6px; }
+.chip.strong { background: var(--chem); border-color: #b85a17; color: var(--chem-ink); font-weight: 700; }
+.pbtn { font-family: var(--f-sign); font-size: 16px; background: var(--chem); color: var(--chem-ink); border: 2px solid #b85a17; border-radius: 4px; padding: 8px 12px; cursor: pointer; box-shadow: 0 3px 0 #b85a17; }
+.pbtn:hover { background: var(--chem-2); }
+.pbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 #b85a17; }
+.pbtn.ghost { background: var(--plate-2); border-color: var(--ink-2); box-shadow: 0 3px 0 var(--ink-2); font-size: 14px; padding: 5px 10px; }
+.select { background: #f1f3f4; border: 2px solid var(--ink-2); border-radius: 3px; padding: 4px 6px; color: var(--ink); }
+.mxtitle { font-family: var(--f-sign); font-weight: 700; font-size: 20px; letter-spacing: .03em; }
+.jugbar { display: flex; height: 34px; border: 3px solid var(--med-ink); border-radius: 4px; overflow: hidden; background: var(--med-ink); gap: 2px; }
+.jugbar i { display: block; min-width: 3px; }
+.jugkey { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink-2); }
+.jugkey span { display: inline-flex; align-items: center; gap: 5px; }
+.jugkey b { color: var(--ink); font-family: var(--f-mono); font-weight: 600; }
+.mxrow { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 12px; padding: 8px 10px; background: var(--plate-2); border: 2px solid var(--plate-line); border-radius: 3px; align-items: center; }
+.mxrow .mnm { font-weight: 700; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mxrow .mamt { font-family: var(--f-screen); font-size: 24px; line-height: 1; background: var(--screen); color: var(--scr); border-radius: 3px; padding: 3px 7px 1px; }
+.mxrow .mamt small { font-size: 16px; color: var(--scr-dim); }
+.mxrow .mfig, .mxrow .fxs { grid-column: 1 / -1; }
+.mfig { display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 12.5px; color: var(--ink-2); align-items: center; }
+.mfig b { color: var(--ink); font-family: var(--f-mono); font-weight: 600; }
+.fxs { display: flex; flex-direction: column; gap: 1px; font-size: 12px; color: var(--ink-2); }
+.fxs .h { color: var(--ok); } .fxs .s { color: #8a5a00; } .fxs .o { color: var(--crit); }
+.mxlabel { background: #14110a; color: #ffd36b; border: 2px solid #5b4a1f; border-radius: 4px; padding: 9px 12px; font-family: var(--f-mono); font-size: 13px; line-height: 1.45; word-break: break-word; }
+.mxlabel small { display: block; color: #9c8548; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+.mxbtns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.credit { font-size: 12px; color: var(--wall-dim); margin: 14px 2px 0; max-width: 78ch; }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="sign" aria-hidden="true"><img class="px" id="signimg" alt=""><b>CHEM</b></div>
+    <div class="grow">
+      <h1>Chemist's <span>Batch Planner</span></h1>
+      <div class="sub">Pick what Medbay needs. It works out every intermediate, the pour order and the heating, simulated with Funky Station's own reaction rules.</div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-planner" aria-controls="view-planner" type="button">Planner</button>
+      <button class="tab" role="tab" id="tab-mixes" aria-controls="view-mixes" type="button">Mixes</button>
+      <button class="tab" role="tab" id="tab-guide" aria-controls="view-guide" type="button">Guidebook</button>
+    </div>
+  </header>
+
+  <section id="view-planner" role="tabpanel" aria-labelledby="tab-planner">
+    <div class="start" id="start">
+      <b>No chemist? Start here.</b>
+      <p>The Medbay starter covers brute, burn, toxin and airloss, which SOP §6 wants stocked within 30 minutes of shift start. Work through the containers in number order and hand the blue-framed ones to Medbay.</p>
+      <button type="button" id="loadStarter">Load Medbay starter</button>
+      <button type="button" class="x" id="hideStart" aria-label="Hide this tip">Hide</button>
+    </div>
+    <div class="grid">
+      <div class="col">
+        <section class="plate">
+          <header><span class="t">Order list</span><button class="linkbtn" id="clear" type="button">Clear</button></header>
+          <div class="body">
+            <div class="search">
+              <input id="q" class="field" type="search" autocomplete="off" placeholder="Add a chemical… (libital, cryoxadone)" aria-label="Search chemicals">
+              <div class="results" id="results" hidden></div>
+            </div>
+            <div class="chips" id="targets" style="flex-direction:column;flex-wrap:nowrap"></div>
+            <div id="itemsWrap"></div>
+            <div><div class="label" style="margin-bottom:5px">Presets</div><div class="chips" id="presets"></div></div>
+          </div>
+        </section>
+        <section class="plate">
+          <header><span class="t">Bench setup</span></header>
+          <div class="body">
+            <div class="setrow"><div class="k">Heating<small>For recipes with a minimum temperature</small></div>
+              <div class="seg" id="heat"><button type="button" data-v="flash">Flash</button><button type="button" data-v="hotplate">Hotplate</button></div></div>
+            <div class="setrow"><div class="k">Heat margin<small>Aim this far above the reaction temperature</small></div>
+              <div class="seg" id="margin"><button type="button" data-v="0">0K</button><button type="button" data-v="5">5K</button><button type="button" data-v="10">10K</button><button type="button" data-v="20">20K</button></div></div>
+            <label class="tog"><input type="checkbox" id="round"> Round to whole units (surplus is fine)</label>
+            <label class="tog"><input type="checkbox" id="combine"> Combine steps into one container when safe</label>
+            <label class="tog"><input type="checkbox" id="food"> Show food and drink chemicals in search</label>
+          </div>
+        </section>
+      </div>
+
+      <div class="col col-proc">
+        <div class="proc-head"><h2>Procedure</h2><div class="meta" id="procmeta"></div></div>
+        <div class="batches" id="batches"></div>
+      </div>
+
+      <div class="col">
+        <section class="plate wallp">
+          <header><span class="t"><img class="px" data-sprite="ChemDispenser" alt="">Chem dispenser</span></header>
+          <div class="body"><div class="screen"><div class="pull" id="pull"></div></div></div>
+        </section>
+        <section class="plate" id="bringPanel">
+          <header><span class="t"><img class="px" data-sprite="KitchenReagentGrinder" alt="">Bring to the bench</span></header>
+          <div class="body"><div class="src" id="bring"></div></div>
+        </section>
+        <section class="plate">
+          <header><span class="t">Hazards &amp; SOP</span></header>
+          <div class="body"><div class="hazlist" id="haz"></div></div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-mixes" role="tabpanel" aria-labelledby="tab-mixes" hidden>
+    <div class="mixgrid">
+      <section class="plate">
+        <header><span class="t">Mix builder</span><button class="linkbtn" id="mxreset" type="button">Reset</button></header>
+        <div class="body">
+          <p class="empty" style="margin:0">One jug holding several finished medicines at fixed ratios, drawn off in shots. It checks that the chemicals cannot react with each other and how many shots fit under every overdose limit.</p>
+          <div><div class="label" style="margin-bottom:5px">Starting mixes</div><div class="chips" id="mxpresets"></div></div>
+          <div class="mxadd"><input class="field" id="mxq" list="mxlist" autocomplete="off" placeholder="Add a medicine…" aria-label="Add a chemical to the mix"><datalist id="mxlist"></datalist><button class="chip strong" id="mxadd" type="button">Add</button></div>
+          <div class="chips" id="mxrows" style="flex-direction:column;flex-wrap:nowrap"></div>
+          <div class="setrow"><div class="k">Container<small>The mix fills it exactly</small></div><select class="select" id="mxcont" aria-label="Container"></select></div>
+          <div class="setrow"><div class="k">Shot size<small>Your syringe or hypospray</small></div><label class="amt"><input id="mxshot" type="number" min="1" max="100" step="1" aria-label="Units per shot"><span>u</span></label></div>
+          <button class="pbtn" id="mxorder" type="button">Add this jug to the order list</button>
+        </div>
+      </section>
+      <section class="plate med" id="mxout" aria-live="polite"></section>
+    </div>
+    <p class="credit">Starting mixes are modelled on the recommended mixes in segaswolf's Funky chem guide (segaswolf.github.io/funky-chemist-guide). Amounts, overdose limits, side effects and reaction checks are recalculated here from Funky's own files.</p>
+  </section>
+
+  <section id="view-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
+    <div class="gb">
+      <nav class="plate wallp gbnav" id="gbnav" aria-label="Guidebook pages"></nav>
+      <article class="plate" id="gbpage"></article>
+    </div>
+  </section>
+
+  <div class="foot">
+    <p id="foot"></p>
+    <details><summary>Sprite credits</summary><p>In-game sprites from Space Station 14 and Funky Station, used under each sprite's own license.</p><ul id="credits"></ul></details>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="plate drawer" id="drawer" hidden aria-label="Chemical details"><button class="xbtn closer" id="dclose" type="button" aria-label="Close">✕</button><div class="in" id="dbody"></div></aside>
+
+<script type="application/json" id="chemdata">/*DATA*/</script>
+<script type="application/json" id="guidedata">/*GUIDE*/</script>
+<script type="application/json" id="spritedata">/*SPRITES*/</script>
+<script type="application/json" id="creditdata">/*CREDITS*/</script>
+<script>/*ENGINE*/</script>
+<script>
+(() => {
+const DATA = JSON.parse(document.getElementById('chemdata').textContent);
+const GUIDE = JSON.parse(document.getElementById('guidedata').textContent);
+const SPR = JSON.parse(document.getElementById('spritedata').textContent);
+const CREDITS = JSON.parse(document.getElementById('creditdata').textContent);
+const E = makeEngine(DATA);
+const RG = DATA.reagents;
+const MEALS = DATA.meals;
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nm = id => E.nm(id);
+const cap = s => String(s).replace(/(^|\s|-)\w/g, c => c.toUpperCase());
+const f2 = x => { const r = Math.round(x * 100) / 100; return Number.isInteger(r) ? String(r) : r.toFixed(2).replace(/0$/, ''); };
+const K = t => Math.round(t) + 'K';
+const color = id => (RG[id] && RG[id].c) || '#888';
+const dot = id => `<span class="dot" style="background:${esc(color(id))}"></span>`;
+const rbtn = id => `<button class="rname" type="button" data-info="${esc(id)}">${esc(nm(id))}</button>`;
+const spr = (e, cls = '', alt = '') => SPR[e] ? `<img class="px ${cls}" src="${SPR[e].img}" alt="${esc(alt)}" width="32" height="32">` : '';
+const SOP2 = new Set(['Narcotics', 'Toxins']), SOP1 = new Set(['Pyrotechnic']);
+const CONT_SPR = { 'Beaker': 'Beaker', 'Large beaker': 'LargeBeaker', 'Jug': 'Jug', 'Bucket': 'Bucket', 'Bluespace beaker': 'BluespaceBeaker' };
+const BTN = [100, 50, 30, 25, 20, 15, 10, 5, 1];
+function clicks(a) {
+  if (!Number.isInteger(a) || BTN.includes(a)) return '';
+  const out = []; let r = a;
+  for (const b of BTN) while (r >= b) { out.push(b); r -= b; }
+  return out.length <= 4 ? out.join('+') : '';
+}
+document.querySelectorAll('img[data-sprite]').forEach(i => { const s = SPR[i.dataset.sprite]; if (s) i.src = s.img; else i.remove(); });
+$('#signimg').src = (SPR.LargeBeaker || SPR.Beaker || {}).img || '';
+
+// ---------- search scope ----------
+const nonFoodUse = new Set();
+E.RX.forEach(x => { const pg = Object.keys(x.p).map(p => RG[p] && RG[p].g); if (pg.some(g => g && g !== 'Drinks' && g !== 'Foods')) x._keys.forEach(k => nonFoodUse.add(k)); });
+const makeables = Object.keys(RG).filter(id => E.makeable(id) && !E.DISP.has(id)).sort((a, b) => nm(a).localeCompare(nm(b)));
+
+// ---------- state ----------
+const PRESETS = [
+  { name: 'Medbay starter', hint: 'Brute, burn, toxin, airloss (SOP §6)', t: [['Libital', 60], ['Aiuri', 60], ['Multiver', 60], ['Dexalin', 60]] },
+  { name: 'Cryo stock', hint: 'Cryoxadone for the cryo pods', t: [['Cryoxadone', 90]] },
+  { name: 'Advanced topicals', hint: '2 regenerative mesh + 2 medicated suture', t: [], items: [['RecipeRegenerativeMesh', 2], ['RecipeMedicatedSuture', 2]] },
+  { name: 'Cargo · Stimulant ed.', hint: "North's cargo chart", t: [['Desoxyephedrine', 100], ['Ephedrine', 95], ['Multiver', 60], ['Aiuri', 30]] },
+  { name: 'Cargo · Heater ed.', hint: "North's cargo chart", t: [['Napalm', 150], ['Phlogiston', 30], ['Fluorosurfactant', 100]] },
+];
+const MIXES = [
+  { name: 'Brute · Libital + Probital', p: [['Libital', 1], ['Probital', 1]] },
+  { name: 'Brute · Libital + Salicylic Acid', p: [['Libital', 1], ['SalicylicAcid', 1]] },
+  { name: 'Pierce · Libital + Puncturase', p: [['Libital', 1], ['Puncturase', 1]] },
+  { name: 'Slash · Libital + Lacerinol', p: [['Libital', 1], ['Lacerinol', 1]] },
+  { name: 'Burn · Aiuri + Lenturi', p: [['Aiuri', 1], ['Lenturi', 1]] },
+  { name: 'Burn+ · Lenturi + Oxandrolone', p: [['Lenturi', 1], ['Oxandrolone', 1]] },
+  { name: 'Poison · Multiver + Pentetic Acid', p: [['Multiver', 1], ['PenteticAcid', 1]] },
+  { name: 'Rad · Arithrazine 3 : Libital 1', p: [['Arithrazine', 3], ['Libital', 1]] },
+  { name: 'Airloss · Dexalin + Salbutamol', p: [['Dexalin', 1], ['Salbutamol', 1]] },
+  { name: 'Airloss + blood · Dexalin, Salbutamol, Saline', p: [['Dexalin', 14], ['Salbutamol', 13], ['Saline', 13]] },
+  { name: 'Crit · Epinephrine + Inaprovaline', p: [['Epinephrine', 1], ['Inaprovaline', 1]] },
+  { name: 'Bleeding · Tranexamic Acid + Saline', p: [['TranexamicAcid', 1], ['Saline', 1]] },
+].filter(m => m.p.every(([id]) => RG[id]));
+const mixDefault = () => ({ cont: 200, shot: 15, parts: MIXES[0].p.map(([id, n]) => ({ id, n })) });
+const DEFAULT = { targets: PRESETS[0].t.map(([id, amt]) => ({ id, amt })), items: [], heat: 'flash', margin: 10, round: true, combine: true, food: false, choice: {}, hideStart: false, page: 'chemist' };
+let S = load();
+if (!S.mix || !Array.isArray(S.mix.parts)) S.mix = mixDefault();
+S.mix.parts = S.mix.parts.filter(x => RG[x.id] && x.n > 0);
+S.mix.cont = +S.mix.cont || 200; S.mix.shot = +S.mix.shot || 15;
+function load() {
+  try {
+    const v = JSON.parse(localStorage.getItem('chemPlanner.v2'));
+    if (v && Array.isArray(v.targets)) return Object.assign({}, DEFAULT, v, { targets: v.targets.filter(t => RG[t.id]), items: (v.items || []).filter(i => MEALS.some(m => m.id === i.id)) });
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULT));
+}
+function save() { try { localStorage.setItem('chemPlanner.v2', JSON.stringify(S)); } catch (e) {} }
+const optsOf = () => ({ heat: S.heat, margin: S.margin, round: S.round, combine: S.combine, choice: S.choice });
+
+// ---------- planner render ----------
+let P = null, FINAL = new Map();
+function allTargets() {
+  FINAL = new Map();
+  S.targets.forEach(t => { if (t.amt > 0) FINAL.set(t.id, (FINAL.get(t.id) || 0) + t.amt); });
+  S.items.forEach(it => { const m = MEALS.find(x => x.id === it.id); if (!m || it.n < 1) return; Object.entries(m.reagents).forEach(([r, a]) => FINAL.set(r, (FINAL.get(r) || 0) + a * it.n)); });
+  return [...FINAL].map(([id, amt]) => ({ id, amt }));
+}
+function render() {
+  save();
+  $('#heat').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.heat)));
+  $('#margin').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === S.margin)));
+  $('#round').checked = S.round; $('#combine').checked = S.combine; $('#food').checked = S.food;
+  $('#start').hidden = S.hideStart;
+  renderTargets();
+  const targets = allTargets();
+  P = targets.length ? E.plan(Object.assign({ targets }, optsOf())) : null;
+  renderBatches(); renderPull(); renderHaz();
+}
+
+function renderTargets() {
+  const el = $('#targets');
+  el.innerHTML = S.targets.length ? S.targets.map((t, i) => {
+    const g = RG[t.id].g;
+    const sop = SOP2.has(g) ? ' <span class="pill sop" title="Chemist SOP §2: no poisons or narcotics">§2</span>' : SOP1.has(g) ? ' <span class="pill sop" title="Chemist SOP §1: no explosive mixtures">§1</span>' : '';
+    return `<div class="trow">${dot(t.id)}<div class="nm">${rbtn(t.id)}${sop}</div>
+      <label class="amt"><input id="amt-${i}" data-i="${i}" type="number" min="1" max="1000" step="1" value="${t.amt}" aria-label="Units of ${esc(nm(t.id))}"><span>u</span></label>
+      <select class="fill" id="fill-${i}" data-fill="${i}" aria-label="Size ${esc(nm(t.id))} to fill a container"><option value="">Fill…</option>${Object.entries(DATA.containers).filter(([, c]) => c <= 250).map(([n, c]) => `<option value="${c}">${n} (${c}u)</option>`).join('')}</select>
+      <button class="xbtn" type="button" data-rm="${i}" aria-label="Remove ${esc(nm(t.id))}">✕</button></div>`;
+  }).join('') : '<div class="empty">Nothing on the order. Search above, or load a preset.</div>';
+  $('#itemsWrap').innerHTML = `<div class="label" style="margin-bottom:5px">Microwave topicals</div><div class="chips" style="flex-direction:column;flex-wrap:nowrap">${MEALS.map(m => {
+    const it = S.items.find(x => x.id === m.id); const n = it ? it.n : 0;
+    return `<div class="irow">${spr(m.result)}<div><b>${esc(cap(m.rn))}</b><small>${Object.entries(m.reagents).map(([r, a]) => `${a}u ${esc(nm(r))}`).join(' + ')} each</small></div>
+      <label class="amt"><input id="item-${esc(m.id)}" data-item="${esc(m.id)}" type="number" min="0" max="20" step="1" value="${n}" aria-label="Number of ${esc(m.rn)}" style="width:34px"><span>×</span></label><span></span></div>`;
+  }).join('')}</div>`;
+}
+
+function srcPill(it) {
+  if (it.flash) return '<span class="pill flash">flash</span>';
+  if (it.from) return `<button type="button" class="pill from" data-jump="${it.from.index}">from #${it.from.index}</button>`;
+  if (E.DISP.has(it.id)) return '<span class="pill disp">dispenser</span>';
+  return '<span class="pill bring">bring in</span>';
+}
+function stepLis(order, trigger) {
+  return order.map(it => {
+    if (it.macro) return `<li class="grp"><ol>${stepLis(it.seq, null)}</ol><div class="gl">These react in place and form ${f2(it.amt)}u ${esc(nm(it.product))}</div></li>`;
+    const c = clicks(it.amt);
+    return `<li class="st${it === trigger ? ' trig' : ''}"><span class="q">${f2(it.amt)}u</span><span class="what">${dot(it.id)}${rbtn(it.id)} ${srcPill(it)}${it.cat ? '<span class="pill cat" title="Catalyst: needed in the mix, not used up">catalyst</span>' : ''}${it === trigger ? '<span class="pill flash">triggers flash</span>' : ''}${c ? `<span class="clicks">${c}</span>` : ''}</span></li>`;
+  }).join('');
+}
+function batchHazards(b) {
+  const out = [], seen = new Set();
+  b.events.forEach(ev => {
+    const x = E.byId[ev.rx], key = ev.e + ev.rx;
+    if (seen.has(key)) return; seen.add(key);
+    if (ev.e === 'CreateGas') { const g = (x.fx.find(f => f.__type === 'CreateGas') || {}).gas || 'gas'; out.push({ cls: g === 'Plasma' ? 'haz crit' : 'haz', html: `<b>Releases ${esc(g.toLowerCase())} gas.</b> ${g === 'Plasma' ? 'Do this in space or a large, ventilated room.' : 'Mind the room air.'}` }); }
+    if (['ExplosionReactionEffect', 'AreaReactionEffect', 'EmpReactionEffect'].includes(ev.e)) out.push({ cls: 'haz crit', html: `<b>${esc(ev.rx)} goes off in this step.</b> No pour order avoided it.` });
+  });
+  return out;
+}
+function thermo(b) {
+  const lo = 180, hi = Math.max(600, Math.ceil((Math.max(b.finalT, b.rx.minT) + 40) / 100) * 100);
+  const pos = t => Math.max(0, Math.min(100, (t - lo) / (hi - lo) * 100));
+  const need = b.rx.minT > E.ROOM ? `<span class="need" style="left:${pos(b.rx.minT)}%" title="Reacts at ${K(b.rx.minT)}"></span>` : '';
+  return `<div class="thermo"><div class="bar">${need}<span class="mark" style="left:calc(${pos(b.finalT)}% - 1px)"></span></div><div class="scale"><span style="left:0">${lo}</span><span style="left:${pos(E.ROOM)}%">room</span><span style="left:100%">${hi}K</span></div></div>`;
+}
+const tcls = t => t > 330 ? 'red' : t < 250 ? 'cold' : '';
+
+function renderBatches() {
+  const el = $('#batches');
+  if (!P) { el.innerHTML = '<section class="plate"><div class="body empty">Add something to the order list to see the procedure.</div></section>'; $('#procmeta').textContent = ''; return; }
+  $('#procmeta').textContent = `${P.batches.length} container${P.batches.length === 1 ? '' : 's'} · ${P.batches.filter(b => b.heat).length} heated · every step simulated`;
+  const html = P.batches.map(b => {
+    const x = b.rx;
+    const trigger = b.heat && b.heat.mode === 'flash' ? b.order[b.order.length - 1] : null;
+    const recipes = E.recipesFor(b.product);
+    const isFinal = FINAL.has(b.product);
+    const notes = [];
+    if (b.heat && b.heat.mode === 'flash') notes.push({ cls: 'haz', ic: 'ClothingHeadHatWelding', html: `<b>Flash heat.</b> Aluminium, sulfur and potassium go in last, ${b.heat.f}u each. When the ${esc(nm(trigger.id).toLowerCase())} lands they vanish and the mix jumps to about <span class="num">${b.heat.to}K</span>; ${esc(nm(b.product))} needs <span class="num">${K(x.minT)}</span>. Wear a welding mask or sunglasses: the flash blinds.` });
+    if (b.heat && b.heat.mode === 'hotplate') notes.push({ cls: 'haz', html: `<b>Hotplate.</b> After the last add, heat to <span class="num">${b.heat.to}K</span>. ${esc(nm(b.product))} reacts at <span class="num">${K(x.minT)}</span>.` });
+    if (x.mix) notes.push({ cls: 'haz', html: `<b>Needs mixing: ${esc(x.mix.join(', '))}.</b> It will not react in a plain beaker.` });
+    batchHazards(b).forEach(h => notes.push(h));
+    b.notes.forEach(n => notes.push({ cls: 'haz', html: esc(n) }));
+    const left = b.leftover.filter(l => l.amt >= 0.05);
+    const cats = left.filter(l => x.r[l.id] && x.r[l.id][1]);
+    if (cats.length) notes.push({ cls: '', ic: 'ChemMaster', html: `${cats.map(c => `${f2(c.amt)}u ${esc(nm(c.id))}`).join(', ')} stays behind as the catalyst. Pull only the ${esc(nm(b.product).toLowerCase())} with the ChemMaster.` });
+    const usesFor = b.uses.map(u => {
+      if (!u.to) return `<div class="row"><span>${f2(u.amt)}u</span><span class="amb">→ ORDER</span></div>`;
+      const tb = P.batches.find(z => z.product === u.to) || P.batches.find(z => E.flatten(z.order).some(a => a.from && a.from.product === b.product));
+      return `<div class="row"><span>${f2(u.amt)}u</span><span>→ ${tb ? `<button type="button" data-jump="${tb.index}">#${tb.index}</button> ` : ''}${esc(nm(u.to).toUpperCase())}</span></div>`;
+    }).join('');
+    const spare = P.surplus[b.product] ? `<div class="row k"><span>${f2(P.surplus[b.product])}u</span><span>spare</span></div>` : '';
+    const recipeSel = recipes.length > 1 || !isFinal ? `<label>Recipe <select data-choice="${esc(b.product)}" id="rc-${esc(b.product)}">${recipes.map(r => `<option value="${esc(r.id)}"${r.id === x.id ? ' selected' : ''}>${esc(r._keys.map(k => nm(k)).join(' + '))}${r.mix ? ' (' + r.mix.join('/') + ')' : ''}${r.minT ? ' @' + K(r.minT) : ''}</option>`).join('')}${!isFinal ? '<option value="raw">I already have it</option>' : ''}</select></label>` : '';
+    return `<article class="plate batch${isFinal ? ' med' : ''}" id="b${b.index}">
+      <header class="bhead"><div class="bnum">${b.index}</div>${spr(CONT_SPR[b.container.name], 'cont-img', b.container.name)}
+        <div class="btitle"><div class="p">${dot(b.product)}<button type="button" data-info="${esc(b.product)}">${esc(nm(b.product))}</button>${isFinal ? '<span class="pill" style="color:#fff">for Medbay</span>' : '<span class="pill" style="color:var(--chem-ink)">intermediate</span>'}</div>
+        <div class="s">${esc(x._keys.map(k => `${f2(x.r[k][0])} ${nm(k)}`).join(' + '))} → ${esc(Object.entries(x.p).map(([k, v]) => `${f2(v)} ${nm(k)}`).join(' + '))}${x.minT ? ` · reacts at ${K(x.minT)}` : ''}</div></div>
+        <div class="cont"><b>${esc(b.container.name)}</b>${f2(b.peak)} / ${b.container.cap}u</div></header>
+      <div class="bbody">
+        <ol class="steps">${stepLis(b.order, trigger)}</ol>
+        <div class="bside">
+          <div class="screen">
+            <div class="row"><span class="k">MAKES</span><span class="big">${f2(b.yield)}u</span></div>
+            <div class="row"><span class="k">STATUS</span><span class="${b.ok ? '' : 'red'}">${b.ok ? 'CLEAN' : 'CHECK'}</span></div>
+            <div class="row"><span class="k">ENDS AT</span><span class="${tcls(b.finalT)}">${K(b.finalT)}</span></div>
+            ${thermo(b)}
+            ${left.length && !cats.length ? `<div class="row"><span class="k">LEFT</span><span class="amb">${left.map(l => `${f2(l.amt)}u ${esc(nm(l.id).toUpperCase())}`).join(', ')}</span></div>` : ''}
+            <div class="k" style="margin-top:6px">GOES TO</div>${usesFor}${spare}
+          </div>
+          ${notes.map(n => `<div class="note ${n.cls}">${n.ic ? spr(n.ic, 'ic') : ''}${n.html}</div>`).join('')}
+        </div>
+      </div>
+      ${recipeSel ? `<div class="bfoot">${recipeSel}</div>` : ''}
+    </article>`;
+  }).join('');
+  const mw = S.items.filter(i => i.n > 0).map(it => {
+    const m = MEALS.find(x => x.id === it.id); if (!m) return '';
+    return `<article class="plate med mw"><header class="bhead"><div class="bnum">MW</div>${spr('KitchenMicrowave', 'cont-img', 'microwave')}
+      <div class="btitle"><div class="p">${spr(m.result)} ${esc(cap(m.rn))} ×${it.n}</div><div class="s">Microwave, ${m.time}s per batch. Borrow it from the chef. Load one set at a time.</div></div><div class="cont"><b>Microwave</b></div></header>
+      <div class="mwbody">${m.solids.map(s => `<div class="ing">${spr(s.e)}<span><b>${s.c}×</b> ${esc(s.n)}</span></div>`).join('')}${Object.entries(m.reagents).map(([r, a]) => `<div class="ing">${dot(r)}<span><b>${a}u</b> ${rbtn(r)}</span></div>`).join('')}</div></article>`;
+  }).join('');
+  el.innerHTML = html + mw;
+}
+
+function renderPull() {
+  if (!P) { $('#pull').innerHTML = '<div class="k">NOTHING TO DISPENSE</div>'; $('#bringPanel').hidden = true; return; }
+  const rows = Object.entries(P.raw).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...rows.map(r => r[1]));
+  const tot = rows.reduce((a, r) => a + r[1], 0);
+  $('#pull').innerHTML = rows.map(([id, a]) => `<div class="r">${dot(id)}<button type="button" data-info="${esc(id)}">${esc(nm(id).toUpperCase())}</button><span>${f2(a)}u</span><div class="bar"><i style="width:${a / max * 100}%"></i></div></div>`).join('') + `<div class="tot"><span>${rows.length} JUGS</span><span>${f2(tot)}u</span></div>`;
+  const ext = Object.entries(P.external);
+  const solids = new Map();
+  S.items.filter(i => i.n > 0).forEach(it => { const m = MEALS.find(x => x.id === it.id); m && m.solids.forEach(s => solids.set(s.e, { n: s.n, c: (solids.get(s.e) || { c: 0 }).c + s.c * it.n })); });
+  $('#bringPanel').hidden = !ext.length && !solids.size;
+  $('#bring').innerHTML = ext.map(([id, a]) => {
+    const hint = sourceHint(id);
+    return `<div class="r">${hint.img || `<span class="ph">${dot(id)}</span>`}<span>${rbtn(id)}<small>${esc(hint.txt)}</small></span><span class="num">${f2(a)}u</span></div>`;
+  }).join('') + [...solids].map(([e, s]) => `<div class="r">${spr(e) || '<span class="ph"></span>'}<span><b>${esc(cap(s.n))}</b><small>for the microwave</small></span><span class="num">${s.c}×</span></div>`).join('');
+}
+function sourceHint(id) {
+  if (id === 'Water') return { txt: 'From a sink or water tank', img: '' };
+  const src = (RG[id] && RG[id].src) || [];
+  if (!src.length) return { txt: 'Not dispensable. Source it elsewhere.', img: '' };
+  const s = src.find(x => !x.pr) || src[0];
+  return { txt: `${s.how === 'juice' ? 'Juice' : 'Grind'} ${s.n}: ${f2(s.q)}u${s.stack ? ' per sheet' : ''}${s.pr ? ' (varies with potency)' : ''}`, img: spr(s.e) };
+}
+
+function chainHas(id) { return P && P.batches.some(b => b.product === id || E.flatten(b.order).some(a => a.id === id)); }
+function renderHaz() {
+  const out = [];
+  if (!P) { $('#haz').innerHTML = '<div class="empty">Nothing planned.</div>'; return; }
+  const flashes = P.batches.filter(b => b.heat && b.heat.mode === 'flash');
+  if (flashes.length) out.push(`<div class="note haz">${spr('ClothingHeadHatWelding', 'ic')}<b>Eye protection.</b> ${flashes.length} flash${flashes.length > 1 ? 'es' : ''} (#${flashes.map(b => b.index).join(', #')}). Wear a welding mask or sunglasses.</div>`);
+  P.batches.forEach(b => batchHazards(b).forEach(h => out.push(`<div class="note ${h.cls}">#${b.index}: ${h.html}</div>`)));
+  E.clashes([...FINAL.keys()]).forEach(c => {
+    const prod = Object.keys(c.rx.p)[0];
+    out.push(`<div class="note haz crit"><b>Keep apart: ${c.ids.map(i => esc(nm(i))).join(' + ')}.</b> If they meet, in a container, a patch or a patient, they react${prod ? ` into <button class="rname" type="button" data-info="${esc(prod)}">${esc(nm(prod))}</button>` : ''}.</div>`);
+  });
+  const ids = [...FINAL.keys()];
+  const s2 = ids.filter(i => SOP2.has(RG[i].g)), s1 = ids.filter(i => SOP1.has(RG[i].g));
+  if (s1.length) out.push(`<div class="note haz crit"><b>SOP §1.</b> ${s1.map(i => esc(nm(i))).join(', ')}: incendiary or explosive.</div>`);
+  if (s2.length) out.push(`<div class="note haz crit"><b>SOP §2.</b> ${s2.map(i => esc(nm(i))).join(', ')}: poison or narcotic. Chemists may not experiment with these.</div>`);
+  if (chainHas('Omnizine')) out.push('<div class="note haz crit"><b>SOP §3.</b> This uses Omnizine. Chemists may not experiment with Omnizine-derived mixtures.</div>');
+  const healed = new Set(); ids.forEach(t => (RG[t].e || []).forEach(e => { if (e.t === 'dmg' && !e.c.length) Object.entries(e.d).forEach(([k, v]) => { if (v < 0) healed.add(k); }); }));
+  const cover = { Brute: ['Brute', 'Blunt', 'Slash', 'Piercing'], Burn: ['Burn', 'Heat', 'Cold', 'Shock', 'Caustic'], Airloss: ['Airloss', 'Asphyxiation', 'Bloodloss'], Toxin: ['Toxin', 'Poison', 'Radiation'] };
+  out.push(`<div class="note medn"><b>SOP §6:</b> stock Medbay for brute, burn, airloss and toxin within 30 minutes.<div class="chips" style="margin-top:6px">${Object.entries(cover).map(([k, l]) => { const ok = l.some(d => healed.has(d)); return `<span class="pill ${ok ? 'ok' : 'dim'}">${ok ? '✓' : '–'} ${k}</span>`; }).join('')}</div></div>`);
+  $('#haz').innerHTML = out.join('');
+}
+
+// ---------- reagent info (drawer + guidebook cards) ----------
+const EFFN = { Oxygenate: 'restores oxygen', ModifyBleedAmount: 'changes bleeding', ModifyBloodLevel: 'changes blood level', AdjustTemperature: 'changes body temperature', CureZombieInfection: 'cures zombie infection', ChemCleanBloodstream: 'purges other chemicals', ReduceRotting: 'slows rotting', MovespeedModifier: 'changes move speed', ChemVomit: 'can cause vomiting', Jitter: 'causes jitters', Drunk: 'causes drunkenness', Electrocute: 'electrocutes', Polymorph: 'polymorphs', ModifyLungGas: 'changes lung gas', FlammableReaction: 'makes the patient flammable', Emote: 'causes emotes' };
+function fmtEffect(e) {
+  const cond = e.c.length ? ` <span class="cond">${esc(e.c.map(c => c.replace(/^(.+) <0\.0\du$/, 'unless $1 is present')).join(', '))}</span>` : '';
+  if (e.t === 'dmg') return `<div>${Object.entries(e.d).map(([k, v]) => v < 0 ? `<span class="heal">heals ${esc(k)} ${f2(-v)}</span>` : `<span class="harm">deals ${esc(k)} ${f2(v)}</span>`).join(' · ')}${cond}</div>`;
+  let txt = EFFN[e.t] || e.t;
+  if (e.t === 'GenericStatusEffect' && e.i && e.i.key) txt = 'status: ' + String(e.i.key).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  if (e.t === 'MovespeedModifier' && e.i) txt += ` ×${e.i.walkSpeedModifier || e.i.sprintSpeedModifier}`;
+  return `<div>${esc(txt)}${cond}</div>`;
+}
+function fmtTouch(t) {
+  if (t.t === 'dmg') return `<div>${Object.entries(t.d).map(([k, v]) => v < 0 ? `<span class="heal">heals ${esc(k)} ${f2(-v)}</span>` : `<span class="harm">deals ${esc(k)} ${f2(v)}</span>`).join(' · ')}${t.per ? ' <span class="cond">per unit applied</span>' : ''}</div>`;
+  if (t.t === 'Flammable') return `<div><span class="harm">sets fire stacks</span>${t.m ? ` <span class="cond">×${t.m} per unit</span>` : ''}</div>`;
+  if (t.t === 'bleed') return `<div><span class="heal">reduces bleeding</span> <span class="cond">${f2(-t.a)} per unit</span></div>`;
+  if (t.t === 'Extinguish') return '<div>puts out fires</div>';
+  return `<div>${esc(String(t.t).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase())}</div>`;
+}
+function recipeLine(x) {
+  return `${x._keys.map(k => `${f2(x.r[k][0])} ${rbtn(k)}${x.r[k][1] ? ' <span class="pill cat">catalyst</span>' : ''}`).join(' + ')} → ${Object.entries(x.p).map(([k, v]) => `${f2(v)} ${esc(nm(k))}`).join(' + ')}${x.minT ? ` · at ${K(x.minT)}+` : ''}${x.maxT != null ? ` · below ${K(x.maxT)}` : ''}${x.mix ? ` · ${esc(x.mix.join('/'))}` : ''}`;
+}
+const canOrder = id => E.makeable(id) && !E.DISP.has(id);
+function heals(r) {
+  const h = []; (r.e || []).forEach(e => { if (e.t === 'dmg' && !e.c.length) Object.entries(e.d).forEach(([k, v]) => { if (v < 0) h.push(`${k} ${f2(-v)}`); }); }); return h;
+}
+function openInfo(id) {
+  const r = RG[id]; if (!r) return;
+  const recipes = E.recipesFor(id);
+  const usedIn = [...new Set((E.byAny[id] || []).filter(x => Object.keys(x.p).length && !x.mix).map(x => Object.keys(x.p)[0]))].slice(0, 16);
+  const seen = new Set(); const effs = (r.e || []).filter(e => { const k = JSON.stringify(e); if (seen.has(k)) return false; seen.add(k); return true; });
+  const meals = MEALS.filter(m => m.reagents[id]);
+  const src = (r.src || []).slice(0, 6);
+  $('#dbody').innerHTML = `
+    <h3>${dot(id)}${esc(nm(id))}</h3>
+    <div class="chips">${r.g ? `<span class="pill dim">${esc(r.g)}</span>` : ''}${E.DISP.has(id) ? '<span class="pill disp">dispenser</span>' : ''}${SOP2.has(r.g) ? '<span class="pill sop">SOP §2</span>' : ''}${SOP1.has(r.g) ? '<span class="pill sop">SOP §1</span>' : ''}${r.f && r.f.startsWith('_') ? `<span class="pill dim">${esc(r.f.slice(1))}</span>` : ''}</div>
+    ${r.d ? `<p>${esc(r.d)}</p>` : ''}
+    ${canOrder(id) ? `<div><button class="chip" type="button" data-add="${esc(id)}" style="background:var(--chem);font-weight:700">+ Add 30u to order</button></div>` : ''}
+    ${effs.length ? `<div><h4 class="label">In the body${r.rate ? ` · ${f2(r.rate)}u/s` : ''}</h4><div class="eff">${effs.map(fmtEffect).join('')}</div>${r.thr ? `<p style="margin-top:6px;font-size:12.5px">Threshold effects start at <span class="num">${f2(r.thr)}u</span> in the bloodstream.</p>` : ''}<p style="font-size:11.5px;color:var(--ink-2)">Damage numbers are per metabolism tick.</p></div>` : ''}
+    ${(r.touch || []).length ? `<div><h4 class="label">On the skin (splash, spray, patch)</h4><div class="eff">${r.touch.map(fmtTouch).join('')}</div></div>` : ''}
+    ${r.fl ? `<p style="font-size:12.5px">Flammable (strength ${r.fl}).</p>` : ''}
+    ${recipes.length ? `<div><h4 class="label">Recipes</h4><div style="display:flex;flex-direction:column;gap:6px">${recipes.map(x => `<div class="rcp">${recipeLine(x)}</div>`).join('')}</div></div>` : ''}
+    ${src.length ? `<div><h4 class="label">Grind or juice it from</h4><div class="src">${src.map(s => `<div class="r">${spr(s.e) || '<span class="ph"></span>'}<span><b>${esc(cap(s.n))}</b><small>${s.how === 'juice' ? 'juicer' : 'grinder'}${s.stack ? ', per sheet' : ''}${s.pr ? ', varies with potency' : ''}</small></span><span class="num">${f2(s.q)}u</span></div>`).join('')}</div></div>` : ''}
+    ${!recipes.length && !src.length && !E.DISP.has(id) && id !== 'Water' ? '<p>No recipe or grinder source in the data. Source it some other way.</p>' : ''}
+    ${meals.length ? `<div><h4 class="label">Microwave</h4>${meals.map(m => `<div class="rcp">${esc(cap(m.rn))}: ${m.solids.map(s => `${s.c} ${esc(s.n)}`).join(', ')}, ${Object.entries(m.reagents).map(([k, a]) => `${a}u ${esc(nm(k))}`).join(', ')}</div>`).join('')}</div>` : ''}
+    ${usedIn.length ? `<div><h4 class="label">Used in</h4><div class="ggrid">${usedIn.map(p => `<button type="button" data-info="${esc(p)}">${dot(p)}${esc(nm(p))}</button>`).join('')}</div></div>` : ''}`;
+  $('#drawer').hidden = false; $('#scrim').hidden = false; $('#dclose').focus();
+}
+function closeInfo() { $('#drawer').hidden = true; $('#scrim').hidden = true; }
+
+// ---------- guidebook ----------
+const GB_EXTRA = { slug: 'all', title: 'All chemicals' };
+const GROUPS = ['Medicine', 'Elements', 'Toxins', 'Narcotics', 'Pyrotechnic', 'Botanical', 'Biological', 'Exotic', 'Special', 'Foods'];
+function rcard(id) {
+  const r = RG[id]; if (!r) return '';
+  const x = E.recipesFor(id)[0];
+  const h = heals(r);
+  return `<div class="rcard" style="--rc:${esc(color(id))}"><div class="top"><b>${esc(nm(id))}</b>${r.thr ? `<span class="pill dim">OD ≥${f2(r.thr)}u</span>` : ''}${canOrder(id) ? `<button class="chip" type="button" data-add="${esc(id)}">+ Order</button>` : ''}<button class="chip" type="button" data-info="${esc(id)}">Details</button></div>
+    ${r.d ? `<div class="d">${esc(r.d)}</div>` : ''}${h.length ? `<div class="rx"><span class="heal">Heals ${esc(h.join(', '))}</span></div>` : ''}${x ? `<div class="rx">${recipeLine(x)}</div>` : ''}</div>`;
+}
+function groupGrid(g) {
+  const ids = Object.keys(RG).filter(i => (RG[i].g || 'Unknown') === g).sort((a, b) => nm(a).localeCompare(nm(b)));
+  return `<div class="ggrid">${ids.map(i => `<button type="button" data-info="${esc(i)}">${dot(i)}${esc(nm(i))}</button>`).join('')}</div>`;
+}
+function renderGuide() {
+  const pages = GUIDE.concat([GB_EXTRA]);
+  const sec = { chemist: 'Chemistry', doctor: 'Medical', all: 'Reference' };
+  $('#gbnav').innerHTML = pages.map(p => `${sec[p.slug] ? `<div class="sec">${sec[p.slug]}</div>` : ''}<button type="button" data-page="${p.slug}" aria-current="${p.slug === S.page}">${esc(p.title)}</button>`).join('');
+  const pg = pages.find(p => p.slug === S.page) || pages[0];
+  let h = '';
+  if (pg.slug === 'all') {
+    h = `<h1>All chemicals</h1><p>Every chemical in Funky Station's data, grouped the way the guidebook groups them. Click one for its effects, recipes and sources.</p>` + GROUPS.map(g => `<h2>${esc(g)}</h2>${groupGrid(g)}`).join('');
+  } else {
+    h = pg.blocks.map(b => {
+      if (b.t === 'h1' || b.t === 'h2' || b.t === 'h3') return `<${b.t}>${b.h}</${b.t}>`;
+      if (b.t === 'p') {
+        let x = `<p>${b.h}</p>`;
+        if (pg.slug === 'cryo' && /170K/.test(b.h)) x += `<div class="note haz"><b>Out of date:</b> Cryoxadone's own data in the Funky repo, and its description, say it works below <span class="num">213K</span>, not 170K.</div>`;
+        return x;
+      }
+      if (b.t === 'li') return `<div class="li${b.n ? ' n' : ''}"${b.n ? ` data-n="${esc(b.n)}"` : ''}><span>${b.h}</span></div>`;
+      if (b.t === 'box') return `<div class="ebox">${b.items.map(i => `<div class="ent">${SPR[i.e] && i.e !== 'CryoPod' ? `<img class="px" src="${SPR[i.e].img}" alt="" width="48" height="48">` : ''}<span>${esc(i.cap || (SPR[i.e] ? SPR[i.e].n : i.e))}</span></div>`).join('')}</div>`;
+      if (b.t === 'reagent') return rcard(b.id);
+      if (b.t === 'group') return groupGrid(b.g);
+      return '';
+    }).join('') + `<p class="gbsrc">Source: Resources/ServerInfo/${esc(pg.src)}</p>`;
+  }
+  $('#gbpage').innerHTML = `<div class="gbpage">${h}</div>`;
+}
+
+// ---------- tabs ----------
+function setTab(t) {
+  const views = { planner: 'planner', mixes: 'mixes', guide: 'guide' };
+  Object.keys(views).forEach(k => { $('#view-' + k).hidden = k !== t; $('#tab-' + k).setAttribute('aria-selected', String(k === t)); });
+  if (t === 'guide') renderGuide();
+  if (t === 'mixes') renderMix();
+  try { history.replaceState(null, '', t === 'guide' ? '#guidebook' : t === 'mixes' ? '#mixes' : '#planner'); } catch (e) {}
+}
+
+// ---------- mixes ----------
+const isOD = c => /^≥[\d.]+u$/.test(c);
+function profile(id) {
+  const heal = [], side = [], od = [], also = new Set(), treats = new Set();
+  (RG[id].e || []).forEach(e => {
+    const odE = e.c.some(isOD);
+    const conds = e.c.filter(c => !isOD(c) && !/^<[\d.]+u$/.test(c)).map(c => c.replace(/^dmg /, 'damage '));
+    const ct = conds.length ? ` (${conds.join(', ')})` : '';
+    if (e.t === 'dmg') {
+      const hs = Object.entries(e.d).filter(([, v]) => v < 0), hm = Object.entries(e.d).filter(([, v]) => v > 0);
+      if (odE) { if (hm.length) od.push('deals ' + hm.map(([k, v]) => `${k} ${f2(v)}`).join(', ')); return; }
+      if (hs.length) { heal.push(hs.map(([k, v]) => `${k} ${f2(-v)}`).join(' · ') + ct); hs.forEach(([k]) => treats.add(k)); }
+      if (hm.length) side.push('deals ' + hm.map(([k, v]) => `${k} ${f2(v)}`).join(', ') + ct);
+      return;
+    }
+    let t;
+    if (e.t === 'MovespeedModifier') t = `slows movement to ×${e.i.walkSpeedModifier || e.i.sprintSpeedModifier}`;
+    else if (e.t === 'ModifyBleedAmount') { t = (e.i.amount < 0 ? 'reduces bleeding by ' : 'worsens bleeding by ') + f2(Math.abs(e.i.amount)); if (e.i.amount < 0) treats.add('Bleeding'); }
+    else if (e.t === 'ModifyBloodLevel') { t = `restores blood (+${f2(e.i.amount)})`; if (e.i.amount > 0) treats.add('Blood'); }
+    else if (e.t === 'ChemCleanBloodstream') { t = 'purges other chemicals from the blood'; treats.add('Purge'); }
+    else if (e.t === 'GenericStatusEffect') t = 'status: ' + String((e.i && e.i.key) || '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() + (e.i && e.i.type ? ' ' + String(e.i.type).toLowerCase() : '');
+    else if (e.t === 'Emote' || e.t === 'Jitter') t = e.t === 'Jitter' ? 'jitters' : null;
+    else t = EFFN[e.t] || e.t;
+    if (!t) return;
+    if (odE) { if (e.t === 'MovespeedModifier') od.push(`slows movement to ×${e.i.walkSpeedModifier || e.i.sprintSpeedModifier}`); else od.push(EFFN[e.t] || t); return; }
+    if (e.t === 'MovespeedModifier') side.push(t + ct); else also.add(t + ct);
+  });
+  return { heal: [...new Set(heal)], side: [...new Set(side)], od: [...new Set(od)], also: [...also], treats: [...treats] };
+}
+const mixAdd = id => { if (!S.mix.parts.some(x => x.id === id)) S.mix.parts.push({ id, n: 1 }); renderMix(); };
+const mixOptions = Object.keys(RG).filter(id => RG[id].g === 'Medicine').sort((a, b) => nm(a).localeCompare(nm(b)));
+function mixLabel(m, pr) {
+  const names = m.rows.map(r => r.abbr).join('+');
+  const tr = [...new Set(m.rows.flatMap(r => pr[r.id].treats))].filter(t => !['Purge'].includes(t)).slice(0, 3);
+  const od = m.minThr ? ` · OD ${f2(m.minThr.thr)} ${m.minThr.abbr}` : '';
+  const sz = m.rows.map(r => r.perShot);
+  const each = sz.every(x => Math.abs(x - sz[0]) < 0.01) ? `${f2(sz[0])}u each` : m.rows.map(r => `${f2(r.perShot)}u ${r.abbr}`).join(' + ');
+  const mx = m.safeShots != null ? ` · max ${m.safeShots} shot${m.safeShots === 1 ? '' : 's'}` : '';
+  return `${names}${tr.length ? ' · ' + tr.join('+') : ''}${od} · ${each} per ${m.shot}u shot${mx}`;
+}
+let mixText = '';
+function renderMix() {
+  save();
+  const M = S.mix;
+  $('#mxpresets').innerHTML = MIXES.map((x, i) => `<button type="button" class="chip" data-mxp="${i}">${esc(x.name)}</button>`).join('');
+  $('#mxlist').innerHTML = mixOptions.map(id => `<option value="${esc(nm(id))}"></option>`).join('');
+  $('#mxcont').innerHTML = Object.entries(DATA.containers).filter(([, c]) => c <= 250).map(([n, c]) => `<option value="${c}"${c === M.cont ? ' selected' : ''}>${n} (${c}u)</option>`).join('');
+  if (document.activeElement !== $('#mxshot')) $('#mxshot').value = M.shot;
+  $('#mxrows').innerHTML = M.parts.length ? M.parts.map((x, i) => `<div class="trow" style="grid-template-columns:auto minmax(0,1fr) auto auto">${dot(x.id)}<div class="nm">${rbtn(x.id)}</div>
+      <label class="amt"><input data-mxn="${i}" type="number" min="1" max="99" step="1" value="${x.n}" aria-label="Parts of ${esc(nm(x.id))}" style="width:38px"><span>parts</span></label>
+      <button class="xbtn" type="button" data-mxrm="${i}" aria-label="Remove ${esc(nm(x.id))}">✕</button></div>`).join('') : '<div class="empty">Add at least one medicine, or pick a starting mix.</div>';
+  const m = E.mixPlan(M.parts, M.cont, M.shot);
+  const out = $('#mxout');
+  if (!m || M.parts.length < 1) { out.innerHTML = '<header><span class="t">Jug</span></header><div class="body"><div class="empty">Nothing in the jug yet.</div></div>'; mixText = ''; return; }
+  const pr = {}; m.rows.forEach(r => { pr[r.id] = profile(r.id); });
+  mixText = mixLabel(m, pr);
+  const cname = Object.entries(DATA.containers).find(([, c]) => c === M.cont);
+  const bar = m.rows.map(r => `<i style="flex:${r.amt} 1 0;background:${esc(color(r.id))}" title="${esc(nm(r.id))} ${r.amt}u"></i>`).join('');
+  const key = m.rows.map(r => `<span>${dot(r.id)}${esc(nm(r.id))} <b>${r.amt}u</b></span>`).join('');
+  const rows = m.rows.map(r => {
+    const g = RG[r.id].g; const p = pr[r.id];
+    const sop = SOP2.has(g) ? ' <span class="pill sop" title="Chemist SOP §2">§2</span>' : SOP1.has(g) ? ' <span class="pill sop" title="Chemist SOP §1">§1</span>' : '';
+    const pill = r.shots == null ? '<span class="pill ok">no overdose</span>' : r.shots === 0 ? '<span class="pill sop">overdoses in one shot</span>' : `<span class="pill ${r.id === m.limiting ? 'flash' : 'dim'}">${r.shots} shot${r.shots === 1 ? '' : 's'} to OD</span>`;
+    return `<div class="mxrow"><div class="mnm">${dot(r.id)}${rbtn(r.id)}${sop}</div><div class="mamt">${r.amt}<small>u · ${Math.round(r.share * 100)}%</small></div>
+      <div class="mfig"><span>per shot <b>${f2(r.perShot)}u</b></span><span>OD at <b>${r.thr ? f2(r.thr) + 'u' : 'none'}</b></span>${pill}</div>
+      <div class="fxs">${p.heal.map(h => `<div class="h">heals ${esc(h)}</div>`).join('')}${p.also.map(h => `<div class="h">${esc(h)}</div>`).join('')}${p.side.map(h => `<div class="s">${esc(h)}</div>`).join('')}${p.od.length ? `<div class="o">At ${f2(r.thr)}u: ${esc(p.od.join(', '))}</div>` : ''}</div></div>`;
+  }).join('');
+  const warn = [];
+  m.clashes.forEach(c => { const prod = Object.keys(c.rx.p).map(k => esc(nm(k))).join(' + '); warn.push(`<div class="note haz crit"><b>Do not mix: ${c.ids.map(i => esc(nm(i))).join(' + ')}.</b> They react${prod ? ` into ${prod}` : ''} as soon as they meet, in the jug or in a patient. Split them across jugs.</div>`); });
+  const s2 = m.rows.filter(r => SOP2.has(RG[r.id].g)), s1 = m.rows.filter(r => SOP1.has(RG[r.id].g));
+  if (s2.length) warn.push(`<div class="note haz crit"><b>SOP §2.</b> ${s2.map(r => esc(nm(r.id))).join(', ')}: poison or narcotic. Chemists may not experiment with these.</div>`);
+  if (s1.length) warn.push(`<div class="note haz crit"><b>SOP §1.</b> ${s1.map(r => esc(nm(r.id))).join(', ')}: incendiary or explosive.</div>`);
+  if (M.cont > 0 && M.shot > M.cont) warn.push('<div class="note haz crit">The shot is bigger than the container.</div>');
+  const lim = m.limiting ? esc(nm(m.limiting)) : '';
+  const screen = `<div class="screen"><div class="row"><span class="k">SAFE SHOTS</span><span class="big ${m.safeShots === 0 ? 'red' : 'amb'}">${m.safeShots == null ? 'NO LIMIT' : m.safeShots}</span></div>
+    <div class="row"><span class="k">SHOT SIZE</span><span>${f2(m.shot)}u</span></div>
+    <div class="row"><span class="k">JUG HOLDS</span><span>${m.jugShots} shot${m.jugShots === 1 ? '' : 's'}</span></div>
+    ${m.safeShots != null ? `<div class="row"><span class="k">FIRST TO OD</span><span class="amb">${lim}</span></div><div class="row"><span class="k">ONE SHOT OF</span><span class="${m.singleOD <= m.shot ? 'red' : ''}">${f2(Math.round(m.singleOD * 10) / 10)}u+ OVERDOSES</span></div>` : ''}</div>`;
+  out.innerHTML = `<header><span class="t">Jug</span><span class="t">${esc(cname ? cname[0] : '')} · ${M.cont}u</span></header>
+    <div class="body"><div class="mxtitle">${esc(m.rows.map(r => r.abbr).join(' + '))}</div>
+    <div class="jugbar" role="img" aria-label="${esc(m.rows.map(r => `${nm(r.id)} ${r.amt}u`).join(', '))}">${bar}</div><div class="jugkey">${key}</div>
+    ${warn.join('')}${screen}
+    <div style="display:flex;flex-direction:column;gap:8px">${rows}</div>
+    <div class="mxlabel"><small>Jug label</small><span id="mxlabeltext">${esc(mixText)}</span></div>
+    <div class="mxbtns"><button class="pbtn ghost" id="mxcopy" type="button">Copy label</button><span class="empty" id="mxcopied" aria-live="polite"></span></div>
+    <p class="empty" style="margin:0;font-size:12px">Safe shots count only what you inject, worst case, with no metabolism between shots. Overdose starts at the listed amount in the bloodstream, so recheck the analyzer between shots.</p></div>`;
+}
+
+// ---------- search ----------
+let hits = [], hi = 0;
+function runSearch() {
+  const q = $('#q').value.trim().toLowerCase(), box = $('#results');
+  if (!q) { box.hidden = true; return; }
+  hits = makeables.filter(id => { const r = RG[id]; if (!S.food && (r.g === 'Drinks' || r.g === 'Foods') && !nonFoodUse.has(id)) return false; return nm(id).toLowerCase().includes(q) || id.toLowerCase().includes(q); })
+    .sort((a, b) => (nm(a).toLowerCase().startsWith(q) ? 0 : 1) - (nm(b).toLowerCase().startsWith(q) ? 0 : 1)).slice(0, 40);
+  hi = 0;
+  box.innerHTML = hits.length ? hits.map((id, i) => `<button type="button" data-pick="${esc(id)}" class="${i === 0 ? 'on' : ''}">${dot(id)}${esc(nm(id))}<span class="g">${esc(RG[id].g || '')}</span></button>`).join('') : '<div class="empty" style="padding:8px 10px">No craftable chemical by that name.</div>';
+  box.hidden = false;
+}
+function addTarget(id, amt) {
+  const ex = S.targets.find(t => t.id === id);
+  if (ex) ex.amt += amt; else S.targets.push({ id, amt });
+  $('#q').value = ''; $('#results').hidden = true; render();
+}
+
+// ---------- events ----------
+$('#q').addEventListener('input', runSearch);
+$('#q').addEventListener('keydown', e => {
+  const btns = [...$('#results').querySelectorAll('button')];
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!btns.length) return; hi = (hi + (e.key === 'ArrowDown' ? 1 : -1) + btns.length) % btns.length; btns.forEach((b, i) => b.classList.toggle('on', i === hi)); btns[hi].scrollIntoView({ block: 'nearest' }); }
+  if (e.key === 'Enter' && hits[hi]) { e.preventDefault(); addTarget(hits[hi], 30); }
+  if (e.key === 'Escape') $('#results').hidden = true;
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search')) $('#results').hidden = true;
+  const t = e.target.closest('[data-pick],[data-rm],[data-info],[data-jump],[data-add],[data-preset],[data-page],[data-mxp],[data-mxrm]');
+  if (!t) return;
+  if (t.dataset.mxp != null) { const x = MIXES[+t.dataset.mxp]; S.mix.parts = x.p.map(([id, n]) => ({ id, n })); renderMix(); }
+  else if (t.dataset.mxrm != null) { S.mix.parts.splice(+t.dataset.mxrm, 1); renderMix(); }
+  else if (t.dataset.pick) addTarget(t.dataset.pick, 30);
+  else if (t.dataset.rm != null) { S.targets.splice(+t.dataset.rm, 1); render(); }
+  else if (t.dataset.info) openInfo(t.dataset.info);
+  else if (t.dataset.add) { addTarget(t.dataset.add, 30); closeInfo(); setTab('planner'); }
+  else if (t.dataset.preset != null) { const p = PRESETS[+t.dataset.preset]; S.targets = p.t.map(([id, amt]) => ({ id, amt })); S.items = (p.items || []).map(([id, n]) => ({ id, n })); S.choice = {}; render(); }
+  else if (t.dataset.page) { if (t.dataset.page) { S.page = t.dataset.page; save(); renderGuide(); $('#gbpage').scrollIntoView({ block: 'start' }); } }
+  else if (t.dataset.jump) { const b = document.getElementById('b' + t.dataset.jump); if (b) { b.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); b.classList.add('hl'); setTimeout(() => b.classList.remove('hl'), 1300); } }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.i != null) { S.targets[+t.dataset.i].amt = Math.max(1, Math.min(1000, Math.round(+t.value || 0))); render(); }
+  else if (t.dataset.fill != null && t.value) {
+    const tg = S.targets[+t.dataset.fill];
+    const v = E.maxFill(tg.id, +t.value, optsOf());
+    if (v) tg.amt = Math.floor(v);
+    render();
+  }
+  else if (t.dataset.item) {
+    const n = Math.max(0, Math.min(20, Math.round(+t.value || 0)));
+    const it = S.items.find(x => x.id === t.dataset.item);
+    if (it) it.n = n; else S.items.push({ id: t.dataset.item, n });
+    S.items = S.items.filter(x => x.n > 0); render();
+  }
+  else if (t.dataset.choice) { S.choice[t.dataset.choice] = t.value; render(); }
+  else if (t.dataset.mxn != null) { S.mix.parts[+t.dataset.mxn].n = Math.max(1, Math.min(99, Math.round(+t.value || 1))); renderMix(); }
+  else if (t.id === 'mxcont') { S.mix.cont = +t.value; renderMix(); }
+  else if (t.id === 'mxshot') { S.mix.shot = Math.max(1, Math.min(100, +t.value || 15)); renderMix(); }
+  else if (t.id === 'mxq') { mixPick(); }
+});
+function mixPick() {
+  const v = $('#mxq').value.trim().toLowerCase(); if (!v) return;
+  const id = mixOptions.find(i => nm(i).toLowerCase() === v) || mixOptions.find(i => nm(i).toLowerCase().startsWith(v));
+  if (id) { $('#mxq').value = ''; mixAdd(id); }
+}
+$('#mxadd').addEventListener('click', mixPick);
+$('#mxq').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); mixPick(); } });
+$('#mxreset').addEventListener('click', () => { S.mix = mixDefault(); renderMix(); });
+$('#mxorder').addEventListener('click', () => {
+  const m = E.mixPlan(S.mix.parts, S.mix.cont, S.mix.shot); if (!m) return;
+  m.rows.forEach(r => { const ex = S.targets.find(t => t.id === r.id); if (ex) ex.amt += r.amt; else S.targets.push({ id: r.id, amt: r.amt }); });
+  setTab('planner'); render();
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#mxcopy')) return;
+  const note = $('#mxcopied');
+  const done = ok => { note.textContent = ok ? 'Copied.' : 'Select the label text and copy it.'; setTimeout(() => { note.textContent = ''; }, 2500); };
+  try { navigator.clipboard.writeText(mixText).then(() => done(true), () => done(false)); } catch (err) { done(false); }
+});
+$('#heat').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.heat = b.dataset.v; render(); } });
+$('#margin').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.margin = +b.dataset.v; render(); } });
+$('#round').addEventListener('change', e => { S.round = e.target.checked; render(); });
+$('#combine').addEventListener('change', e => { S.combine = e.target.checked; render(); });
+$('#food').addEventListener('change', e => { S.food = e.target.checked; runSearch(); save(); });
+$('#clear').addEventListener('click', () => { S.targets = []; S.items = []; S.choice = {}; render(); });
+$('#loadStarter').addEventListener('click', () => { S.targets = PRESETS[0].t.map(([id, amt]) => ({ id, amt })); S.items = []; S.choice = {}; render(); });
+$('#hideStart').addEventListener('click', () => { S.hideStart = true; render(); });
+$('#tab-planner').addEventListener('click', () => setTab('planner'));
+$('#tab-guide').addEventListener('click', () => setTab('guide'));
+$('#tab-mixes').addEventListener('click', () => setTab('mixes'));
+$('#scrim').addEventListener('click', closeInfo);
+$('#dclose').addEventListener('click', closeInfo);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#drawer').hidden) closeInfo(); });
+
+$('#presets').innerHTML = PRESETS.map((p, i) => `<button type="button" class="chip" data-preset="${i}" title="${esc(p.hint)}">${esc(p.name)}</button>`).join('');
+$('#foot').textContent = `Data from Funky Station's repository (commit ${DATA.commit}, synced ${DATA.synced}): ${DATA.reactions.length} reactions, ${Object.keys(RG).length} chemicals, grinder sources, microwave recipes and guidebook pages. Each container is simulated with the game's reaction loop: reactions fire as you pour, highest priority first, and every chemical has the same heat capacity per unit, so a reaction that shrinks the volume heats the mix and one that grows it cools it. Intermediates are assumed moved pure with the ChemMaster, and beakers are assumed not to drift toward room temperature between steps.`;
+$('#credits').innerHTML = CREDITS.map(c => `<li>${esc(c)}</li>`).join('');
+render();
+setTab(location.hash === '#guidebook' ? 'guide' : location.hash === '#mixes' ? 'mixes' : 'planner');
+})();
+</script>

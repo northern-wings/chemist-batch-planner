@@ -1,0 +1,10 @@
+/* Self-hosted copies of the fonts the planner uses (all SIL Open Font License 1.1), so it works offline. */
+@font-face{font-family:"Pixelify Sans";font-style:normal;font-weight:500;font-display:swap;src:url("pixelify-sans-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:"Pixelify Sans";font-style:normal;font-weight:700;font-display:swap;src:url("pixelify-sans-latin-700-normal.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans";font-style:normal;font-weight:400;font-display:swap;src:url("noto-sans-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans";font-style:normal;font-weight:500;font-display:swap;src:url("noto-sans-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans";font-style:normal;font-weight:600;font-display:swap;src:url("noto-sans-latin-600-normal.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans";font-style:normal;font-weight:700;font-display:swap;src:url("noto-sans-latin-700-normal.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans Mono";font-style:normal;font-weight:400;font-display:swap;src:url("noto-sans-mono-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans Mono";font-style:normal;font-weight:600;font-display:swap;src:url("noto-sans-mono-latin-600-normal.woff2") format("woff2")}
+@font-face{font-family:"VT323";font-style:normal;font-weight:400;font-display:swap;src:url("vt323-latin-400-normal.woff2") format("woff2")}

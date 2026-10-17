@@ -1,0 +1,6 @@
+Fonts bundled for offline use (served via the @fontsource packages):
+  Pixelify Sans   - SIL Open Font License 1.1
+  Noto Sans       - SIL Open Font License 1.1 (Copyright 2022 The Noto Project Authors)
+  Noto Sans Mono  - SIL Open Font License 1.1 (Copyright 2022 The Noto Project Authors)
+  VT323           - SIL Open Font License 1.1
+License text: https://openfontlicense.org

@@ -1,0 +1,12 @@
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+tools/raw.json
+tools/sources.json
+tools/entnames.json
+tools/data.json
+tools/guidebook.json
+tools/__pycache__/
+funky/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+{
+  "name": "chemist-batch-planner",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Plans Funky Station chemistry batches.",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

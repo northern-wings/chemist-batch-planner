@@ -1,0 +1,49 @@
+name: Sync Funky data
+
+# Manual: Actions tab -> "Sync Funky data" -> Run workflow.
+# Re-reads the Funky Station repo (reagents, reactions, guidebook, microwave recipes, grinder/juicer sources),
+# rebuilds docs/index.html and commits it if anything changed. Publish a new release afterwards to get a new .exe.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python packages
+        run: pip install -r tools/requirements.txt
+
+      - name: Fetch the parts of Funky Station we read
+        run: |
+          git clone --filter=blob:none --no-checkout --depth 1 https://github.com/funky-station/funky-station.git funky
+          cd funky
+          git sparse-checkout init --cone
+          git sparse-checkout set $(cat ../tools/sparse.txt | tr '\n' ' ')
+          git checkout
+
+      - name: Rebuild the app
+        working-directory: tools
+        env:
+          FUNKY: ${{ github.workspace }}/funky
+        run: python sync.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html
+          if git diff --cached --quiet; then
+            echo "Funky data unchanged."
+          else
+            git commit -m "Sync Funky data ($(git -C funky rev-parse --short HEAD))"
+            git push
+          fi
